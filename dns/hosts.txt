@@ -1,0 +1,4 @@
+# Mini-DNS - arquivo de zona estatico (formato: nome  IP)
+# Resolvido pelo servidor DNS minimalista (dns_server.py)
+
+webserver.ufpi.local   172.25.0.20

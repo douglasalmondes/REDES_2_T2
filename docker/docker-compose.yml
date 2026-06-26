@@ -1,0 +1,281 @@
+networks:
+  redes2_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/24
+
+services:
+
+  # ─── DNS (UDP nativo) ──────────────────────────────────────────────────────
+  # Compartilhado por todos os profiles (tcp, rudp, http_tcp, http_rudp).
+
+  dns_server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: redes2_dns_server
+    command: ["python3", "-u", "dns_server.py", "--host", "0.0.0.0", "--port", "5300", "--zone", "/app/hosts.txt"]
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      redes2_net:
+        ipv4_address: 172.25.0.30
+    profiles: ["tcp", "rudp", "http_tcp", "http_rudp"]
+
+  # ─── TCP (transferência de arquivo - Segunda Avaliação) ────────────────────
+
+  tcp_server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: redes2_tcp_server
+    command: ["python3", "-u", "tcp_server.py", "--host", "0.0.0.0", "--port", "5000", "--output", "/logs/received_tcp"]
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MATRICULA=${MATRICULA:-}
+      - NOME=${NOME:-}
+      - AUTH_SEED=${AUTH_SEED:-}
+    volumes:
+      - ../logs:/logs
+    networks:
+      - redes2_net
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    profiles: ["tcp"]
+
+  capture_tcp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: redes2_capture_tcp
+    network_mode: "service:tcp_server"
+    depends_on:
+      - tcp_server
+    environment:
+      - SCENARIO=${SCENARIO:-X}   # recebe do host via export SCENARIO=B
+    # sh -c permite usar a variável de ambiente dentro do container
+    command: >
+      sh -c "tcpdump -U -i any -w /logs/$${SCENARIO}_tcp.pcap tcp port 5000"
+    volumes:
+      - ../logs:/logs
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    profiles: ["tcp"]
+
+  tcp_client:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: redes2_tcp_client
+    depends_on:
+      - tcp_server
+      - capture_tcp
+    environment:
+      - MATRICULA=${MATRICULA:-}
+      - NOME=${NOME:-}
+      - AUTH_SEED=${AUTH_SEED:-}
+    volumes:
+      - ../logs:/logs
+      - ../data:/data:ro
+    networks:
+      - redes2_net
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    profiles: ["tcp"]
+
+  # ─── R-UDP (transferência de arquivo - Segunda Avaliação) ──────────────────
+
+  rudp_server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: redes2_rudp_server
+    command: ["python3", "-u", "rudp_server.py", "--host", "0.0.0.0", "--port", "5001", "--output", "/logs/received_rudp"]
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MATRICULA=${MATRICULA:-}
+      - NOME=${NOME:-}
+      - AUTH_SEED=${AUTH_SEED:-}
+    volumes:
+      - ../logs:/logs
+    networks:
+      - redes2_net
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    profiles: ["rudp"]
+
+  capture_rudp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: redes2_capture_rudp
+    network_mode: "service:rudp_server"
+    depends_on:
+      - rudp_server
+    environment:
+      - SCENARIO=${SCENARIO:-X}
+    command: >
+      sh -c "tcpdump -U -i any -w /logs/$${SCENARIO}_rudp.pcap udp port 5001"
+    volumes:
+      - ../logs:/logs
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    profiles: ["rudp"]
+
+  rudp_client:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: redes2_rudp_client
+    depends_on:
+      - rudp_server
+      - capture_rudp
+    environment:
+      - MATRICULA=${MATRICULA:-}
+      - NOME=${NOME:-}
+      - AUTH_SEED=${AUTH_SEED:-}
+    volumes:
+      - ../logs:/logs
+      - ../data:/data:ro
+    networks:
+      - redes2_net
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    profiles: ["rudp"]
+
+  # ─── HTTP sobre TCP (Terceira Avaliação) ────────────────────────────────────
+  # IP fixo 172.25.0.20 porque é o que está cadastrado em dns/hosts.txt
+  # como "webserver.ufpi.local".
+
+  http_tcp_server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: redes2_http_tcp_server
+    command: ["python3", "-u", "http_server.py", "--transport", "tcp", "--host", "0.0.0.0", "--port", "8080", "--www", "/app/www"]
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MATRICULA=${MATRICULA:-}
+      - NOME=${NOME:-}
+      - AUTH_SEED=${AUTH_SEED:-}
+    volumes:
+      - ../logs:/logs
+    networks:
+      redes2_net:
+        ipv4_address: 172.25.0.20
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    profiles: ["http_tcp"]
+
+  capture_http_tcp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: redes2_capture_http_tcp
+    network_mode: "service:http_tcp_server"
+    depends_on:
+      - http_tcp_server
+    environment:
+      - SCENARIO=${SCENARIO:-X}
+    command: >
+      sh -c "tcpdump -U -i any -w /logs/$${SCENARIO}_http_tcp.pcap '(udp port 5300) or (tcp port 8080)'"
+    volumes:
+      - ../logs:/logs
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    profiles: ["http_tcp"]
+
+  http_tcp_client:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: redes2_http_tcp_client
+    depends_on:
+      - http_tcp_server
+      - capture_http_tcp
+      - dns_server
+    environment:
+      - MATRICULA=${MATRICULA:-}
+      - NOME=${NOME:-}
+      - AUTH_SEED=${AUTH_SEED:-}
+    volumes:
+      - ../logs:/logs
+    networks:
+      - redes2_net
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    profiles: ["http_tcp"]
+
+  # ─── HTTP sobre R-UDP (Terceira Avaliação) ──────────────────────────────────
+
+  http_rudp_server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: redes2_http_rudp_server
+    command: ["python3", "-u", "http_server.py", "--transport", "rudp", "--host", "0.0.0.0", "--port", "8081", "--www", "/app/www"]
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MATRICULA=${MATRICULA:-}
+      - NOME=${NOME:-}
+      - AUTH_SEED=${AUTH_SEED:-}
+    volumes:
+      - ../logs:/logs
+    networks:
+      redes2_net:
+        ipv4_address: 172.25.0.20
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    profiles: ["http_rudp"]
+
+  capture_http_rudp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: redes2_capture_http_rudp
+    network_mode: "service:http_rudp_server"
+    depends_on:
+      - http_rudp_server
+    environment:
+      - SCENARIO=${SCENARIO:-X}
+    command: >
+      sh -c "tcpdump -U -i any -w /logs/$${SCENARIO}_http_rudp.pcap '(udp port 5300) or (udp port 8081)'"
+    volumes:
+      - ../logs:/logs
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    profiles: ["http_rudp"]
+
+  http_rudp_client:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: redes2_http_rudp_client
+    depends_on:
+      - http_rudp_server
+      - capture_http_rudp
+      - dns_server
+    environment:
+      - MATRICULA=${MATRICULA:-}
+      - NOME=${NOME:-}
+      - AUTH_SEED=${AUTH_SEED:-}
+    volumes:
+      - ../logs:/logs
+    networks:
+      - redes2_net
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    profiles: ["http_rudp"]

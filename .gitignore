@@ -1,0 +1,24 @@
+# Logs e capturas geradas nos testes
+logs/*.json
+logs/*.pcap
+logs/*.csv
+
+# Saídas de análise (gráficos)
+analysis/out/
+analysis/out_http/
+
+# Arquivos recebidos pelo servidor
+received_tcp/
+received_rudp/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*.DS_Store
